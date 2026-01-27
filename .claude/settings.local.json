@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod:*)",
+      "Bash(bash -c \"source /opt/ros/humble/setup.bash && cd /home/simon/Projects/Teleop/ros2_ws && colcon build --packages-select teleop_iphone 2>&1\")",
+      "Bash(ros2 pkg prefix:*)",
+      "Bash(dpkg:*)"
+    ]
+  }
+}
