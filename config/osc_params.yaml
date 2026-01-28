@@ -1,5 +1,12 @@
 osc_node:
   ros__parameters:
-    host: "0.0.0.0"
+    host: "192.168.1.117"
     port: 3333
     frame_id: "iphone"
+    # Apply coordinate correction from ARKit to ROS
+    apply_correction: true
+    # Correction matrix: ARKit (X右 Y上 Z后) -> ROS (X前 Y左 Z上)
+    correction_matrix:
+      row0: [0.0, 0.0, -1.0]
+      row1: [-1.0, 0.0, 0.0]
+      row2: [0.0, 1.0, 0.0]

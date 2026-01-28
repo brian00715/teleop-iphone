@@ -6,10 +6,14 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/quaternion.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <std_msgs/msg/float64.hpp>
+#include <tf2_ros/transform_broadcaster.hpp>
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <geometry_msgs/msg/quaternion.hpp>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -113,10 +117,34 @@ public:
         this->declare_parameter<std::string>("host", "0.0.0.0");
         this->declare_parameter<int>("port", 8000);
         this->declare_parameter<std::string>("frame_id", "iphone");
+        this->declare_parameter<bool>("apply_correction", true);
+        // Correction matrix rows: ARKit (X右 Y上 Z后) -> ROS (X前 Y左 Z上)
+        this->declare_parameter<std::vector<double>>("correction_matrix.row0", std::vector<double>{0, 0, -1});
+        this->declare_parameter<std::vector<double>>("correction_matrix.row1", std::vector<double>{-1, 0, 0});
+        this->declare_parameter<std::vector<double>>("correction_matrix.row2", std::vector<double>{0, 1, 0});
 
         host_ = this->get_parameter("host").as_string();
         port_ = this->get_parameter("port").as_int();
         frame_id_ = this->get_parameter("frame_id").as_string();
+        apply_correction_ = this->get_parameter("apply_correction").as_bool();
+
+        // Load correction matrix from 3 row vectors
+        auto row0 = this->get_parameter("correction_matrix.row0").as_double_array();
+        auto row1 = this->get_parameter("correction_matrix.row1").as_double_array();
+        auto row2 = this->get_parameter("correction_matrix.row2").as_double_array();
+        if (row0.size() == 3 && row1.size() == 3 && row2.size() == 3) {
+            correction_matrix_.setValue(
+                row0[0], row0[1], row0[2],
+                row1[0], row1[1], row1[2],
+                row2[0], row2[1], row2[2]
+            );
+            correction_matrix_.getRotation(correction_quaternion_);
+            RCLCPP_INFO(this->get_logger(), "Loaded correction matrix from config");
+        } else {
+            correction_matrix_.setValue(0, 0, -1, -1, 0, 0, 0, 1, 0);
+            correction_matrix_.getRotation(correction_quaternion_);
+            RCLCPP_WARN(this->get_logger(), "Invalid correction_matrix rows, using default");
+        }
 
         // Create publishers
         imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(
@@ -135,6 +163,9 @@ public:
             "iphone/pressure", 10);
         compass_pub_ = this->create_publisher<std_msgs::msg::Float64>(
             "iphone/compass_heading", 10);
+
+        // Create TF broadcaster
+        tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
         // Start UDP receiver thread
         if (init_socket()) {
@@ -503,35 +534,71 @@ private:
         pose_msg.header.stamp = stamp;
         pose_msg.header.frame_id = frame_id_;
 
+        // Raw ARKit position and orientation
+        double px = 0.0, py = 0.0, pz = 0.0;
+        double qx = 0.0, qy = 0.0, qz = 0.0, qw = 1.0;
+
         // Set position if available
         if (arkit.contains("position") && arkit["position"].is_array() && arkit["position"].size() >= 3) {
             auto pos = arkit["position"];
-            pose_msg.pose.position.x = pos[0].get<double>();
-            pose_msg.pose.position.y = pos[1].get<double>();
-            pose_msg.pose.position.z = pos[2].get<double>();
-        } else {
-            // Default position to origin
-            pose_msg.pose.position.x = 0.0;
-            pose_msg.pose.position.y = 0.0;
-            pose_msg.pose.position.z = 0.0;
+            px = pos[0].get<double>();
+            py = pos[1].get<double>();
+            pz = pos[2].get<double>();
         }
 
         // Set orientation if available (ARKit rotation is [x, y, z, w])
         if (arkit.contains("rotation") && arkit["rotation"].is_array() && arkit["rotation"].size() >= 4) {
             auto rot = arkit["rotation"];
-            pose_msg.pose.orientation.x = rot[0].get<double>();
-            pose_msg.pose.orientation.y = rot[1].get<double>();
-            pose_msg.pose.orientation.z = rot[2].get<double>();
-            pose_msg.pose.orientation.w = rot[3].get<double>();
-        } else {
-            // Default orientation to identity quaternion
-            pose_msg.pose.orientation.x = 0.0;
-            pose_msg.pose.orientation.y = 0.0;
-            pose_msg.pose.orientation.z = 0.0;
-            pose_msg.pose.orientation.w = 1.0;
+            qx = rot[0].get<double>();
+            qy = rot[1].get<double>();
+            qz = rot[2].get<double>();
+            qw = rot[3].get<double>();
         }
 
+        // Publish raw ARKit pose
+        pose_msg.pose.position.x = px;
+        pose_msg.pose.position.y = py;
+        pose_msg.pose.position.z = pz;
+        pose_msg.pose.orientation.x = qx;
+        pose_msg.pose.orientation.y = qy;
+        pose_msg.pose.orientation.z = qz;
+        pose_msg.pose.orientation.w = qw;
         arkit_pose_pub_->publish(pose_msg);
+
+        // Broadcast TF with optional coordinate transformation
+        geometry_msgs::msg::TransformStamped tf_msg;
+        tf_msg.header.stamp = stamp;
+
+        if (apply_correction_) {
+            // Apply coordinate transformation from ARKit to ROS using correction matrix
+            tf_msg.header.frame_id = "iphone_odom";
+            tf2::Vector3 p_arkit(px, py, pz);
+            tf2::Vector3 p_ros = correction_matrix_ * p_arkit;
+
+            tf2::Quaternion q_arkit(qx, qy, qz, qw);
+            tf2::Quaternion q_ros = correction_quaternion_ * q_arkit;
+
+            tf_msg.child_frame_id = frame_id_;
+            tf_msg.transform.translation.x = p_ros.x();
+            tf_msg.transform.translation.y = p_ros.y();
+            tf_msg.transform.translation.z = p_ros.z();
+            tf_msg.transform.rotation.x = q_ros.x();
+            tf_msg.transform.rotation.y = q_ros.y();
+            tf_msg.transform.rotation.z = q_ros.z();
+            tf_msg.transform.rotation.w = q_ros.w();
+        } else {
+            // Publish raw ARKit pose without correction
+            tf_msg.header.frame_id = "arkit_world";
+            tf_msg.child_frame_id = frame_id_;
+            tf_msg.transform.translation.x = px;
+            tf_msg.transform.translation.y = py;
+            tf_msg.transform.translation.z = pz;
+            tf_msg.transform.rotation.x = qx;
+            tf_msg.transform.rotation.y = qy;
+            tf_msg.transform.rotation.z = qz;
+            tf_msg.transform.rotation.w = qw;
+        }
+        tf_broadcaster_->sendTransform(tf_msg);
     }
 
     // OSC-based publish functions
@@ -614,6 +681,11 @@ private:
     int port_;
     std::string frame_id_;
 
+    // Coordinate transformation
+    bool apply_correction_;
+    tf2::Matrix3x3 correction_matrix_;
+    tf2::Quaternion correction_quaternion_;
+
     // Socket
     int sockfd_ = -1;
     std::atomic<bool> running_;
@@ -628,6 +700,9 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gravity_pub_;
     rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr pressure_pub_;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr compass_pub_;
+
+    // TF broadcaster
+    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
     // Message cache
     sensor_msgs::msg::Imu imu_msg_;

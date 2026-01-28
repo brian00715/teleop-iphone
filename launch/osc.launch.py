@@ -41,9 +41,31 @@ def generate_launch_description():
         emulate_tty=True,
     )
 
-    return LaunchDescription([
-        host_arg,
-        port_arg,
-        frame_id_arg,
-        osc_node,
-    ])
+    tf_static = [
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="static_transform_publisher",
+            arguments=["0", "0", "0", "0.707", "0.0", "-0.707", "0.0", "iphone", "iphone_ros"],
+        )
+    ]
+
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="screen",
+        arguments=["-d", PathJoinSubstitution([pkg_share, "config", "default.rviz"])],
+        emulate_tty=True,
+    )
+
+    return LaunchDescription(
+        [
+            host_arg,
+            port_arg,
+            frame_id_arg,
+            osc_node,
+            rviz_node,
+            *tf_static,
+        ]
+    )
