@@ -6,17 +6,19 @@ Raw data inspector - shows exactly what ZigSim Pro is sending
 import socket
 import sys
 
+
 def hex_dump(data, length=64):
     """Print hex dump of data"""
     preview = data[:length]
 
     # Hex representation
-    hex_str = ' '.join(f'{b:02x}' for b in preview)
+    hex_str = " ".join(f"{b:02x}" for b in preview)
 
     # ASCII representation
-    ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in preview)
+    ascii_str = "".join(chr(b) if 32 <= b < 127 else "." for b in preview)
 
     return hex_str, ascii_str
+
 
 def main():
     port = 3333
@@ -24,7 +26,7 @@ def main():
         port = int(sys.argv[1])
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(('0.0.0.0', port))
+    sock.bind(("0.0.0.0", port))
 
     print(f"Raw Data Inspector - Listening on port {port}")
     print("=" * 70)
@@ -49,17 +51,18 @@ def main():
             print()
 
             # Try to detect format
-            if data[0:1] == b'{':
+            if data[0:1] == b"{":
                 print("Format: Looks like JSON")
                 try:
                     import json
-                    j = json.loads(data.decode('utf-8'))
+
+                    j = json.loads(data.decode("utf-8"))
                     print(f"JSON Keys: {list(j.keys())}")
                 except:
                     print("Failed to parse as JSON")
-            elif data[0:1] == b'#':
+            elif data[0:1] == b"#":
                 print("Format: OSC Bundle (starts with '#bundle')")
-            elif data[0:1] == b'/':
+            elif data[0:1] == b"/":
                 print("Format: OSC Message (starts with '/')")
             else:
                 print(f"Format: Unknown (first byte: 0x{data[0]:02x})")
@@ -72,5 +75,6 @@ def main():
     finally:
         sock.close()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
