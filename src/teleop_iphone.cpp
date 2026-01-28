@@ -139,6 +139,16 @@ class TeleopIphone : public rclcpp::Node {
         size_t     touch_count     = 0;
         bool       has_touch_msg   = false;
         auto       last_touch_time = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
+
+        if (reset_block_active_) {
+            if (now >= reset_cooldown_until_) {
+                reset_block_active_ = false;
+            } else {
+                // Still in reset cooldown
+                return;
+            }
+        }
+
         {
             std::lock_guard<std::mutex> lock(touch_mutex_);
             has_valid_touch = has_valid_touch_;
@@ -155,17 +165,6 @@ class TeleopIphone : public rclcpp::Node {
             return;
         }
 
-        if (reset_block_active_) {
-            if (!has_valid_touch) {
-                reset_block_active_ = false;
-                reset_sent_         = false;
-            }
-            if (now < reset_cooldown_until_) {
-                return;
-            }
-            return;
-        }
-
         // Handle release
         if (!has_valid_touch) {
             if (is_pressing_) {
@@ -176,8 +175,10 @@ class TeleopIphone : public rclcpp::Node {
             return;
         }
 
-        if (touch_count >= 3) {
+        if (touch_count == 3) {
             if (!reset_sent_) {
+                reset_block_active_   = true;
+                reset_cooldown_until_ = now + rclcpp::Duration::from_seconds(2.0);
                 send_reset_to_home();
                 reset_sent_ = true;
             }
@@ -312,8 +313,8 @@ class TeleopIphone : public rclcpp::Node {
                 const auto& response = future.get();
                 if (response->success) {
                     RCLCPP_INFO(this->get_logger(), "Reset to home succeeded");
-                    reset_block_active_  = true;
-                    reset_cooldown_until_ = this->now() + rclcpp::Duration::from_seconds(1.0);
+                    reset_block_active_   = true;
+                    reset_cooldown_until_ = this->now() + rclcpp::Duration::from_seconds(2.0);
                 } else {
                     RCLCPP_ERROR(this->get_logger(), "Reset to home failed: %s", response->message.c_str());
                 }
@@ -388,7 +389,7 @@ class TeleopIphone : public rclcpp::Node {
     bool         has_valid_touch_   = false;
     size_t       touch_count_       = 0;
     bool         has_touch_message_ = false;
-    rclcpp::Time last_touch_time_{0, 0, RCL_SYSTEM_TIME};
+    rclcpp::Time last_touch_time_{0, 0, RCL_ROS_TIME};
 
     // iPhone start pose (when touch began)
     double start_iphone_x_     = 0.0;
@@ -411,9 +412,9 @@ class TeleopIphone : public rclcpp::Node {
     rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr touch_sub_;
     rclcpp::Client<arx_ros2::srv::ResetToHome>::SharedPtr          reset_client_;
 
-    bool reset_sent_ = false;
-    bool reset_block_active_ = false;
-    rclcpp::Time reset_cooldown_until_{0, 0, RCL_SYSTEM_TIME};
+    bool         reset_sent_         = false;
+    bool         reset_block_active_ = false;
+    rclcpp::Time reset_cooldown_until_{0, 0, RCL_ROS_TIME};
 };
 
 int main(int argc, char** argv) {
