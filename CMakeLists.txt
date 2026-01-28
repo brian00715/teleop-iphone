@@ -12,6 +12,7 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 # Include directories
 include_directories(
@@ -29,6 +30,7 @@ ament_target_dependencies(osc_node
   sensor_msgs
   geometry_msgs
   nav_msgs
+  tf2_ros
 )
 
 target_link_libraries(osc_node

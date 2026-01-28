@@ -1,0 +1,79 @@
+BasedOnStyle: Google
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignOperands: true
+AlignTrailingComments: true
+AlignAfterOpenBracket: Align
+ColumnLimit: 120
+IndentWidth: 4
+UseTab: Never
+PointerAlignment: Left
+DerivePointerAlignment: false
+
+SortIncludes: true
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^".*\.h"$'
+    Priority: 1
+    SortPriority: 1
+    CaseSensitive: false
+
+  - Regex: '^<c.*>'
+    Priority: 2
+    SortPriority: 2
+    CaseSensitive: false
+
+  - Regex: '^<[^/]*>'
+    Priority: 3
+    SortPriority: 3
+    CaseSensitive: false
+
+  - Regex: '^<(pthread|unistd|sys/|linux/|boost/).*>'
+    Priority: 4
+    SortPriority: 4
+    CaseSensitive: false
+
+  - Regex: '^<(ros|rclcpp)/.*>'
+    Priority: 5
+    SortPriority: 5
+    CaseSensitive: false
+
+  - Regex: '^<(std_msgs|sensor_msgs|geometry_msgs|nav_msgs|visualization_msgs|tf2_msgs|actionlib_msgs|diagnostic_msgs).*>'
+    Priority: 6
+    SortPriority: 6
+    CaseSensitive: false
+
+  - Regex: '^<.*_msgs/.*>'
+    Priority: 7
+    SortPriority: 7
+    CaseSensitive: false
+
+  - Regex: '^<tf2.*>'
+    Priority: 8
+    SortPriority: 8
+    CaseSensitive: false
+
+  - Regex: '^<tf/.*>'
+    Priority: 9
+    SortPriority: 9
+    CaseSensitive: false
+
+  - Regex: '^<(image_transport|cv_bridge|pcl_ros|rosbag|rosparam|rostime|xmlrpcpp).*>'
+    Priority: 10
+    SortPriority: 10
+    CaseSensitive: false
+
+  - Regex: '^<(opencv|opencv2|pcl|eigen|yaml-cpp|gtest|gmock).*>'
+    Priority: 11
+    SortPriority: 11
+    CaseSensitive: false
+
+  - Regex: '^<.*/'
+    Priority: 12
+    SortPriority: 12
+    CaseSensitive: false
+
+  - Regex: '^".*/'
+    Priority: 13
+    SortPriority: 13
+    CaseSensitive: false

@@ -120,21 +120,21 @@ public:
 
         // Create publishers
         imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(
-            "zigsim/imu", 10);
+            "iphone/imu", 10);
         mag_pub_ = this->create_publisher<sensor_msgs::msg::MagneticField>(
-            "zigsim/magnetic_field", 10);
+            "iphone/magnetic_field", 10);
         gps_pub_ = this->create_publisher<sensor_msgs::msg::NavSatFix>(
-            "zigsim/gps", 10);
+            "iphone/gps", 10);
         pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
-            "zigsim/pose", 10);
+            "iphone/pose", 10);
         arkit_pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
-            "zigsim/arkit_pose", 10);
+            "iphone/arkit_pose", 10);
         gravity_pub_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>(
-            "zigsim/gravity", 10);
+            "iphone/gravity", 10);
         pressure_pub_ = this->create_publisher<sensor_msgs::msg::FluidPressure>(
-            "zigsim/pressure", 10);
+            "iphone/pressure", 10);
         compass_pub_ = this->create_publisher<std_msgs::msg::Float64>(
-            "zigsim/compass_heading", 10);
+            "iphone/compass_heading", 10);
 
         // Start UDP receiver thread
         if (init_socket()) {

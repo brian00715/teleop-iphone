@@ -226,7 +226,7 @@ ros2 bag record /iphone/imu /iphone/pose /iphone/gps
 Remap topics when launching:
 
 ```bash
-ros2 run teleop_iphone osc_node --ros-args -r zigsim/imu:=/mobile/imu
+ros2 run teleop_iphone osc_node --ros-args -r iphone/imu:=/mobile/imu
 ```
 
 ### Use in Launch File
