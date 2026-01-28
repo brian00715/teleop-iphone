@@ -12,6 +12,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/quaternion.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
@@ -157,6 +158,7 @@ class OSCNode : public rclcpp::Node {
         gravity_pub_    = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("iphone/gravity", 10);
         pressure_pub_   = this->create_publisher<sensor_msgs::msg::FluidPressure>("iphone/pressure", 10);
         compass_pub_    = this->create_publisher<std_msgs::msg::Float64>("iphone/compass_heading", 10);
+        touch_pub_      = this->create_publisher<geometry_msgs::msg::PoseArray>("iphone/touch", 10);
 
         // Create TF broadcaster
         tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
@@ -350,6 +352,11 @@ class OSCNode : public rclcpp::Node {
                 }
             }
 
+            // Process touch data
+            if (sensor_data.contains("touch") && sensor_data["touch"].is_array()) {
+                publish_touch_json(sensor_data["touch"], now);
+            }
+
         } catch (const json::exception& e) {
             RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
                                  "Failed to parse JSON packet (%zu bytes): %s", size, e.what());
@@ -515,6 +522,33 @@ class OSCNode : public rclcpp::Node {
         auto compass_msg = std_msgs::msg::Float64();
         compass_msg.data = compass["compass"].get<double>();
         compass_pub_->publish(compass_msg);
+    }
+
+    void publish_touch_json(const json& touches, rclcpp::Time stamp) {
+        if (touches.empty()) return;
+
+        // Publish all touch points using PoseArray
+        // Each pose: position.x = touch x, position.y = touch y, position.z = force
+        // orientation.w = radius (other orientation components = 0)
+        auto touch_msg            = geometry_msgs::msg::PoseArray();
+        touch_msg.header.stamp    = stamp;
+        touch_msg.header.frame_id = frame_id_;
+
+        for (const auto& touch : touches) {
+            geometry_msgs::msg::Pose pose;
+            pose.position.x = touch.contains("x") ? touch["x"].get<double>() : 0.0;
+            pose.position.y = touch.contains("y") ? touch["y"].get<double>() : 0.0;
+            pose.position.z = touch.contains("force") ? touch["force"].get<double>() : 0.0;
+
+            pose.orientation.x = 0.0;
+            pose.orientation.y = 0.0;
+            pose.orientation.z = 0.0;
+            pose.orientation.w = touch.contains("radius") ? touch["radius"].get<double>() : 0.0;
+
+            touch_msg.poses.push_back(pose);
+        }
+
+        touch_pub_->publish(touch_msg);
     }
 
     void publish_arkit_pose_json(const json& arkit, rclcpp::Time stamp) {
@@ -688,6 +722,7 @@ class OSCNode : public rclcpp::Node {
     rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gravity_pub_;
     rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr    pressure_pub_;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr             compass_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr      touch_pub_;
 
     // TF broadcaster
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
