@@ -255,8 +255,8 @@ class OSCNode : public rclcpp::Node {
             // Parse JSON
             json j = json::parse(std::string(data, size));
 
-            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Received JSON packet with %zu fields",
-                                 j.size());
+            // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Received JSON packet with %zu fields",
+            //                      j.size());
 
             auto now = this->now();
 

@@ -6,7 +6,6 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /TF1
         - /TF1/Frames1
       Splitter Ratio: 0.5
     Tree Height: 516
@@ -60,7 +59,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /robot_description
-      Enabled: true
+      Enabled: false
       Links:
         All Links Enabled: true
         Expand Joint Details: false
@@ -73,7 +72,7 @@ Visualization Manager:
       Name: RobotModel
       TF Prefix: ""
       Update Interval: 0
-      Value: true
+      Value: false
       Visual Enabled: true
     - Class: rviz_default_plugins/Axes
       Enabled: false
@@ -109,11 +108,25 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: false
+        base_link:
+          Value: true
+        eef_link:
+          Value: true
         iphone:
           Value: true
-        iphone_odom:
-          Value: true
         iphone_ros:
+          Value: true
+        link1:
+          Value: true
+        link2:
+          Value: true
+        link3:
+          Value: true
+        link4:
+          Value: true
+        link5:
+          Value: true
+        link6:
           Value: true
       Marker Scale: 1
       Name: TF
@@ -121,10 +134,7 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        iphone_odom:
-          iphone:
-            iphone_ros:
-              {}
+        {}
       Update Interval: 0
       Value: true
   Enabled: true
@@ -188,10 +198,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.8353980779647827
+      Pitch: 0.7003982067108154
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 2.8884711265563965
+      Yaw: 2.578465461730957
     Saved: ~
 Window Geometry:
   Displays:

@@ -1,0 +1,24 @@
+teleop_iphone:
+  ros__parameters:
+    # iPhone TF frames
+    iphone_source_frame: "iphone_odom"
+    iphone_target_frame: "iphone_ros"
+    # Arm TF frames
+    arm_base_frame: "base_link"
+    arm_ee_frame: "eef_link"
+
+    command_topic: "/arx5_ros2_node/cartesian_command"
+
+    # Touch radius threshold to detect pressing
+    touch_threshold: 0.3
+    touch_timeout: 0.05
+
+    # Scale factor for position mapping (iphone movement -> EE movement)
+    position_scale: 1.0
+    rotation_scale: 0.5
+
+    # Gripper positions
+    gripper_open: 0.08
+    gripper_close: 0.0
+
+    control_rate: 60 # hz

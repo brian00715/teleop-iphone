@@ -13,6 +13,8 @@ find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(arx_ros2 REQUIRED)
 
 # Include directories
 include_directories(
@@ -37,9 +39,23 @@ target_link_libraries(osc_node
   pthread
 )
 
+# Build the teleop node
+add_executable(teleop_iphone
+  src/teleop_iphone.cpp
+)
+
+ament_target_dependencies(teleop_iphone
+  rclcpp
+  geometry_msgs
+  tf2_ros
+  tf2
+  arx_ros2
+)
+
 # Install targets
 install(TARGETS
   osc_node
+  teleop_iphone
   DESTINATION lib/${PROJECT_NAME}
 )
 
