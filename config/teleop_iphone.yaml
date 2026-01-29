@@ -4,8 +4,8 @@ teleop_iphone:
     iphone_source_frame: "iphone_odom"
     iphone_target_frame: "iphone_ros"
     # Arm TF frames
-    arm_base_frame: "base_link"
-    arm_ee_frame: "eef_link"
+    arm_base_frame: "arm/base_link"
+    arm_ee_frame: "arm/eef_link"
 
     command_topic: "/arx5_ros2_node/cartesian_command"
 
@@ -14,8 +14,8 @@ teleop_iphone:
     touch_timeout: 0.05
 
     # Scale factor for position mapping (iphone movement -> EE movement)
-    position_scale: 1.0
-    rotation_scale: 0.5
+    position_scale: 0.8
+    rotation_scale: 0.6
 
     # Gripper positions
     gripper_open: 0.08
