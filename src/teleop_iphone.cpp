@@ -21,12 +21,12 @@ class TeleopIphone : public rclcpp::Node {
         // iPhone TF frames
         this->declare_parameter<std::string>("iphone_source_frame", "iphone_odom");
         this->declare_parameter<std::string>("iphone_target_frame", "iphone_ros");
-        // Arm TF frames
+        // Arm base frame (used as the frame_id for outgoing EE commands; must match arx5_ros2's base_frame)
         this->declare_parameter<std::string>("arm_base_frame", "base_link");
-        this->declare_parameter<std::string>("arm_ee_frame", "link6");
         // Control parameters
         this->declare_parameter<std::string>("eef_cmd_topic", "/arx5_controller/eef_cmd");
         this->declare_parameter<std::string>("gripper_cmd_topic", "/arx5_controller/gripper_cmd");
+        this->declare_parameter<std::string>("eef_state_topic", "/arx5_controller/eef_state");
         this->declare_parameter<std::string>("reset_service_name", "/arx5_controller/reset_to_home");
         this->declare_parameter<double>("touch_threshold", 0.3);
         this->declare_parameter<double>("touch_timeout", 0.05);
@@ -41,7 +41,6 @@ class TeleopIphone : public rclcpp::Node {
         iphone_source_frame_ = this->get_parameter("iphone_source_frame").as_string();
         iphone_target_frame_ = this->get_parameter("iphone_target_frame").as_string();
         arm_base_frame_      = this->get_parameter("arm_base_frame").as_string();
-        arm_ee_frame_        = this->get_parameter("arm_ee_frame").as_string();
         touch_threshold_     = this->get_parameter("touch_threshold").as_double();
         touch_timeout_       = this->get_parameter("touch_timeout").as_double();
         position_scale_      = this->get_parameter("position_scale").as_double();
@@ -52,6 +51,7 @@ class TeleopIphone : public rclcpp::Node {
         int    control_rate  = this->get_parameter("control_rate").as_int();
         eef_cmd_topic_       = this->get_parameter("eef_cmd_topic").as_string();
         gripper_cmd_topic_   = this->get_parameter("gripper_cmd_topic").as_string();
+        eef_state_topic_     = this->get_parameter("eef_state_topic").as_string();
         reset_service_name_  = this->get_parameter("reset_service_name").as_string();
 
         // TF2 setup
@@ -65,6 +65,9 @@ class TeleopIphone : public rclcpp::Node {
         // Subscribers
         touch_sub_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
             "/iphone/touch", 10, std::bind(&TeleopIphone::touch_callback, this, std::placeholders::_1));
+        eef_state_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+            eef_state_topic_, rclcpp::SensorDataQoS(),
+            std::bind(&TeleopIphone::eef_state_callback, this, std::placeholders::_1));
 
         // Services
         reset_client_ = this->create_client<std_srvs::srv::Trigger>(reset_service_name_);
@@ -81,7 +84,8 @@ class TeleopIphone : public rclcpp::Node {
         RCLCPP_INFO(this->get_logger(), "TeleopIphone node started");
         RCLCPP_INFO(this->get_logger(), "  iPhone frames: %s -> %s", iphone_source_frame_.c_str(),
                     iphone_target_frame_.c_str());
-        RCLCPP_INFO(this->get_logger(), "  Arm frames: %s -> %s", arm_base_frame_.c_str(), arm_ee_frame_.c_str());
+        RCLCPP_INFO(this->get_logger(), "  Arm base frame: %s", arm_base_frame_.c_str());
+        RCLCPP_INFO(this->get_logger(), "  Arm EE state topic: %s", eef_state_topic_.c_str());
         RCLCPP_INFO(this->get_logger(), "  Reset service: %s", reset_service_name_.c_str());
         RCLCPP_INFO(this->get_logger(), "  Touch threshold: %.2f", touch_threshold_);
         RCLCPP_INFO(this->get_logger(), "  Touch timeout: %.2f s", touch_timeout_);
@@ -113,24 +117,16 @@ class TeleopIphone : public rclcpp::Node {
                                  ex.what());
             iphone_tf_valid_ = false;
         }
+    }
 
-        // Update arm EE TF
-        try {
-            auto arm_tf = tf_buffer_->lookupTransform(arm_base_frame_, arm_ee_frame_, tf2::TimePointZero);
-
-            ee_x_ = arm_tf.transform.translation.x;
-            ee_y_ = arm_tf.transform.translation.y;
-            ee_z_ = arm_tf.transform.translation.z;
-
-            ee_quat_ = tf2::Quaternion(arm_tf.transform.rotation.x, arm_tf.transform.rotation.y,
-                                       arm_tf.transform.rotation.z, arm_tf.transform.rotation.w);
-
-            arm_tf_valid_ = true;
-        } catch (const tf2::TransformException& ex) {
-            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Could not get arm transform: %s",
-                                 ex.what());
-            arm_tf_valid_ = false;
-        }
+    void eef_state_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(tf_mutex_);
+        ee_x_ = msg->pose.position.x;
+        ee_y_ = msg->pose.position.y;
+        ee_z_ = msg->pose.position.z;
+        ee_quat_ = tf2::Quaternion(msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z,
+                                   msg->pose.orientation.w);
+        ee_state_valid_ = true;
     }
 
     void control_timer_callback() {
@@ -185,9 +181,9 @@ class TeleopIphone : public rclcpp::Node {
             return;
         }
 
-        // Snapshot TF values
+        // Snapshot TF / arm state values
         bool            iphone_tf_valid = false;
-        bool            arm_tf_valid    = false;
+        bool            ee_state_valid  = false;
         double          iphone_x        = 0.0;
         double          iphone_y        = 0.0;
         double          iphone_z        = 0.0;
@@ -199,14 +195,14 @@ class TeleopIphone : public rclcpp::Node {
         {
             std::lock_guard<std::mutex> lock(tf_mutex_);
             iphone_tf_valid = iphone_tf_valid_;
-            arm_tf_valid    = arm_tf_valid_;
+            ee_state_valid  = ee_state_valid_;
             if (iphone_tf_valid) {
                 iphone_x    = iphone_x_;
                 iphone_y    = iphone_y_;
                 iphone_z    = iphone_z_;
                 iphone_quat = iphone_quat_;
             }
-            if (arm_tf_valid) {
+            if (ee_state_valid) {
                 ee_x    = ee_x_;
                 ee_y    = ee_y_;
                 ee_z    = ee_z_;
@@ -221,8 +217,8 @@ class TeleopIphone : public rclcpp::Node {
 
         // Handle first press - record start poses
         if (!is_pressing_) {
-            if (!arm_tf_valid) {
-                RCLCPP_WARN(this->get_logger(), "Arm TF not available on press");
+            if (!ee_state_valid) {
+                RCLCPP_WARN(this->get_logger(), "Arm EE state not available on press");
                 return;
             }
 
@@ -277,10 +273,10 @@ class TeleopIphone : public rclcpp::Node {
         eef_msg.pose.position.x     = target_x;
         eef_msg.pose.position.y     = target_y;
         eef_msg.pose.position.z     = target_z;
-        eef_msg.pose.orientation.x  = q_target.x();
-        eef_msg.pose.orientation.y  = q_target.y();
-        eef_msg.pose.orientation.z  = q_target.z();
-        eef_msg.pose.orientation.w  = q_target.w();
+        eef_msg.pose.orientation.x  = target_quat.x();
+        eef_msg.pose.orientation.y  = target_quat.y();
+        eef_msg.pose.orientation.z  = target_quat.z();
+        eef_msg.pose.orientation.w  = target_quat.w();
         eef_cmd_pub_->publish(eef_msg);
 
         // Gripper control: 2 touches = close, otherwise open (value in meters, per arx5_ros2 gripper_cmd)
@@ -339,9 +335,9 @@ class TeleopIphone : public rclcpp::Node {
     std::string iphone_source_frame_;
     std::string iphone_target_frame_;
     std::string arm_base_frame_;
-    std::string arm_ee_frame_;
     std::string eef_cmd_topic_;
     std::string gripper_cmd_topic_;
+    std::string eef_state_topic_;
     std::string reset_service_name_;
     double      touch_threshold_;
     double      touch_timeout_;
@@ -365,7 +361,7 @@ class TeleopIphone : public rclcpp::Node {
     double          iphone_z_        = 0.0;
     tf2::Quaternion iphone_quat_;
 
-    bool            arm_tf_valid_ = false;
+    bool            ee_state_valid_ = false;
     double          ee_x_         = 0.0;
     double          ee_y_         = 0.0;
     double          ee_z_         = 0.0;
@@ -396,6 +392,7 @@ class TeleopIphone : public rclcpp::Node {
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr  eef_cmd_pub_;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr           gripper_cmd_pub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr touch_sub_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr eef_state_sub_;
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr              reset_client_;
 
     bool         reset_sent_         = false;

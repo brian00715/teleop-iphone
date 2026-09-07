@@ -3,12 +3,12 @@ teleop_iphone:
     # iPhone TF frames
     iphone_source_frame: "iphone_odom"
     iphone_target_frame: "iphone_ros"
-    # Arm TF frames
-    arm_base_frame: "arm/base_link"
-    arm_ee_frame: "arm/eef_link"
+    # Arm base frame (must match arx5_ros2's "base_frame" param; used as frame_id on outgoing EE commands)
+    arm_base_frame: "base_link"
 
     eef_cmd_topic: "/arx5_controller/eef_cmd"
     gripper_cmd_topic: "/arx5_controller/gripper_cmd"
+    eef_state_topic: "/arx5_controller/eef_state"
     reset_service_name: "/arx5_controller/reset_to_home"
 
     # Touch radius threshold to detect pressing
