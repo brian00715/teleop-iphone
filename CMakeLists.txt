@@ -60,6 +60,12 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# Install Python scripts
+install(PROGRAMS
+  scripts/teleop_iphone_zmq.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 # Install launch files
 install(DIRECTORY
   launch

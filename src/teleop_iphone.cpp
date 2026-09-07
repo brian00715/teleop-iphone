@@ -104,9 +104,8 @@ class TeleopIphone : public rclcpp::Node {
             iphone_y_ = iphone_tf.transform.translation.y;
             iphone_z_ = iphone_tf.transform.translation.z;
 
-            tf2::Quaternion q_iphone(iphone_tf.transform.rotation.x, iphone_tf.transform.rotation.y,
-                                     iphone_tf.transform.rotation.z, iphone_tf.transform.rotation.w);
-            tf2::Matrix3x3(q_iphone).getRPY(iphone_roll_, iphone_pitch_, iphone_yaw_);
+            iphone_quat_ = tf2::Quaternion(iphone_tf.transform.rotation.x, iphone_tf.transform.rotation.y,
+                                           iphone_tf.transform.rotation.z, iphone_tf.transform.rotation.w);
 
             iphone_tf_valid_ = true;
         } catch (const tf2::TransformException& ex) {
@@ -123,9 +122,8 @@ class TeleopIphone : public rclcpp::Node {
             ee_y_ = arm_tf.transform.translation.y;
             ee_z_ = arm_tf.transform.translation.z;
 
-            tf2::Quaternion q_ee(arm_tf.transform.rotation.x, arm_tf.transform.rotation.y, arm_tf.transform.rotation.z,
-                                 arm_tf.transform.rotation.w);
-            tf2::Matrix3x3(q_ee).getRPY(ee_roll_, ee_pitch_, ee_yaw_);
+            ee_quat_ = tf2::Quaternion(arm_tf.transform.rotation.x, arm_tf.transform.rotation.y,
+                                       arm_tf.transform.rotation.z, arm_tf.transform.rotation.w);
 
             arm_tf_valid_ = true;
         } catch (const tf2::TransformException& ex) {
@@ -188,39 +186,31 @@ class TeleopIphone : public rclcpp::Node {
         }
 
         // Snapshot TF values
-        bool   iphone_tf_valid = false;
-        bool   arm_tf_valid    = false;
-        double iphone_x        = 0.0;
-        double iphone_y        = 0.0;
-        double iphone_z        = 0.0;
-        double iphone_roll     = 0.0;
-        double iphone_pitch    = 0.0;
-        double iphone_yaw      = 0.0;
-        double ee_x            = 0.0;
-        double ee_y            = 0.0;
-        double ee_z            = 0.0;
-        double ee_roll         = 0.0;
-        double ee_pitch        = 0.0;
-        double ee_yaw          = 0.0;
+        bool            iphone_tf_valid = false;
+        bool            arm_tf_valid    = false;
+        double          iphone_x        = 0.0;
+        double          iphone_y        = 0.0;
+        double          iphone_z        = 0.0;
+        tf2::Quaternion iphone_quat;
+        double          ee_x = 0.0;
+        double          ee_y = 0.0;
+        double          ee_z = 0.0;
+        tf2::Quaternion ee_quat;
         {
             std::lock_guard<std::mutex> lock(tf_mutex_);
             iphone_tf_valid = iphone_tf_valid_;
             arm_tf_valid    = arm_tf_valid_;
             if (iphone_tf_valid) {
-                iphone_x     = iphone_x_;
-                iphone_y     = iphone_y_;
-                iphone_z     = iphone_z_;
-                iphone_roll  = iphone_roll_;
-                iphone_pitch = iphone_pitch_;
-                iphone_yaw   = iphone_yaw_;
+                iphone_x    = iphone_x_;
+                iphone_y    = iphone_y_;
+                iphone_z    = iphone_z_;
+                iphone_quat = iphone_quat_;
             }
             if (arm_tf_valid) {
-                ee_x     = ee_x_;
-                ee_y     = ee_y_;
-                ee_z     = ee_z_;
-                ee_roll  = ee_roll_;
-                ee_pitch = ee_pitch_;
-                ee_yaw   = ee_yaw_;
+                ee_x    = ee_x_;
+                ee_y    = ee_y_;
+                ee_z    = ee_z_;
+                ee_quat = ee_quat_;
             }
         }
 
@@ -240,44 +230,45 @@ class TeleopIphone : public rclcpp::Node {
             reset_sent_  = false;
 
             // Record iPhone start pose
-            start_iphone_x_     = iphone_x;
-            start_iphone_y_     = iphone_y;
-            start_iphone_z_     = iphone_z;
-            start_iphone_roll_  = iphone_roll;
-            start_iphone_pitch_ = iphone_pitch;
-            start_iphone_yaw_   = iphone_yaw;
+            start_iphone_x_    = iphone_x;
+            start_iphone_y_    = iphone_y;
+            start_iphone_z_    = iphone_z;
+            start_iphone_quat_ = iphone_quat;
 
             // Record current EE pose
-            start_ee_x_     = ee_x;
-            start_ee_y_     = ee_y;
-            start_ee_z_     = ee_z;
-            start_ee_roll_  = ee_roll;
-            start_ee_pitch_ = ee_pitch;
-            start_ee_yaw_   = ee_yaw;
+            start_ee_x_    = ee_x;
+            start_ee_y_    = ee_y;
+            start_ee_z_    = ee_z;
+            start_ee_quat_ = ee_quat;
 
             RCLCPP_INFO(this->get_logger(), "Touch started - iPhone: [%.3f, %.3f, %.3f], EE: [%.3f, %.3f, %.3f]",
                         start_iphone_x_, start_iphone_y_, start_iphone_z_, start_ee_x_, start_ee_y_, start_ee_z_);
         }
 
-        // Calculate relative motion from iPhone start pose
-        double delta_x     = (iphone_x - start_iphone_x_) * position_scale_;
-        double delta_y     = (iphone_y - start_iphone_y_) * position_scale_;
-        double delta_z     = (iphone_z - start_iphone_z_) * position_scale_;
-        double delta_roll  = (iphone_roll - start_iphone_roll_) * rotation_scale_;
-        double delta_pitch = (iphone_pitch - start_iphone_pitch_) * rotation_scale_;
-        double delta_yaw   = (iphone_yaw - start_iphone_yaw_) * rotation_scale_;
+        // Calculate relative position delta
+        double delta_x = (iphone_x - start_iphone_x_) * position_scale_;
+        double delta_y = (iphone_y - start_iphone_y_) * position_scale_;
+        double delta_z = (iphone_z - start_iphone_z_) * position_scale_;
 
-        // Apply delta to EE start pose
-        double target_x     = start_ee_x_ + delta_x;
-        double target_y     = start_ee_y_ + delta_y;
-        double target_z     = start_ee_z_ + delta_z;
-        double target_roll  = start_ee_roll_ + delta_roll;
-        double target_pitch = start_ee_pitch_ + delta_pitch;
-        double target_yaw   = start_ee_yaw_ + delta_yaw;
+        // Calculate relative rotation using quaternions
+        // delta_rotation = current_rotation * inverse(start_rotation)
+        tf2::Quaternion delta_quat = iphone_quat * start_iphone_quat_.inverse();
 
-        // Convert RPY to quaternion
-        tf2::Quaternion q_target;
-        q_target.setRPY(target_roll, target_pitch, target_yaw);
+        // Apply rotation scale by interpolating toward identity
+        // If rotation_scale = 1.0, use full rotation; if 0.0, use no rotation
+        if (rotation_scale_ != 1.0) {
+            tf2::Quaternion identity(0, 0, 0, 1);
+            delta_quat = identity.slerp(delta_quat, rotation_scale_);
+        }
+
+        // Apply deltas to EE start pose
+        double target_x = start_ee_x_ + delta_x;
+        double target_y = start_ee_y_ + delta_y;
+        double target_z = start_ee_z_ + delta_z;
+
+        // Apply rotation delta to start orientation
+        tf2::Quaternion target_quat = delta_quat * start_ee_quat_;
+        target_quat.normalize();
 
         // Create and publish eef_cmd (geometry_msgs/PoseStamped, per arx5_ros2 interface)
         auto eef_msg                = geometry_msgs::msg::PoseStamped();
@@ -368,21 +359,17 @@ class TeleopIphone : public rclcpp::Node {
     std::mutex                                  touch_mutex_;
 
     // Current TF values (updated by timer)
-    bool   iphone_tf_valid_ = false;
-    double iphone_x_        = 0.0;
-    double iphone_y_        = 0.0;
-    double iphone_z_        = 0.0;
-    double iphone_roll_     = 0.0;
-    double iphone_pitch_    = 0.0;
-    double iphone_yaw_      = 0.0;
+    bool            iphone_tf_valid_ = false;
+    double          iphone_x_        = 0.0;
+    double          iphone_y_        = 0.0;
+    double          iphone_z_        = 0.0;
+    tf2::Quaternion iphone_quat_;
 
-    bool   arm_tf_valid_ = false;
-    double ee_x_         = 0.0;
-    double ee_y_         = 0.0;
-    double ee_z_         = 0.0;
-    double ee_roll_      = 0.0;
-    double ee_pitch_     = 0.0;
-    double ee_yaw_       = 0.0;
+    bool            arm_tf_valid_ = false;
+    double          ee_x_         = 0.0;
+    double          ee_y_         = 0.0;
+    double          ee_z_         = 0.0;
+    tf2::Quaternion ee_quat_;
 
     // State
     bool is_pressing_ = false;
@@ -394,20 +381,16 @@ class TeleopIphone : public rclcpp::Node {
     rclcpp::Time last_touch_time_{0, 0, RCL_ROS_TIME};
 
     // iPhone start pose (when touch began)
-    double start_iphone_x_     = 0.0;
-    double start_iphone_y_     = 0.0;
-    double start_iphone_z_     = 0.0;
-    double start_iphone_roll_  = 0.0;
-    double start_iphone_pitch_ = 0.0;
-    double start_iphone_yaw_   = 0.0;
+    double          start_iphone_x_ = 0.0;
+    double          start_iphone_y_ = 0.0;
+    double          start_iphone_z_ = 0.0;
+    tf2::Quaternion start_iphone_quat_;
 
     // EE start pose (when touch began)
-    double start_ee_x_     = 0.0;
-    double start_ee_y_     = 0.0;
-    double start_ee_z_     = 0.0;
-    double start_ee_roll_  = 0.0;
-    double start_ee_pitch_ = 0.0;
-    double start_ee_yaw_   = 0.0;
+    double          start_ee_x_ = 0.0;
+    double          start_ee_y_ = 0.0;
+    double          start_ee_z_ = 0.0;
+    tf2::Quaternion start_ee_quat_;
 
     // Publishers and subscribers
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr  eef_cmd_pub_;
