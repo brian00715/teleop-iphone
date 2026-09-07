@@ -14,11 +14,11 @@ teleop_iphone:
     touch_timeout: 0.05
 
     # Scale factor for position mapping (iphone movement -> EE movement)
-    position_scale: 0.8
+    position_scale: 1.2
     rotation_scale: 0.6
 
     # Gripper positions
-    gripper_open: 0.08
-    gripper_close: 0.0
+    gripper_open: 0.04 # 0.07
+    gripper_close: 0.005
 
     control_rate: 60 # hz
