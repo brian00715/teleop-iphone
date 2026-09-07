@@ -6,14 +6,13 @@
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <std_msgs/msg/float64.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
-
-#include <arx_ros2/msg/cartesian_command.hpp>
-#include <arx_ros2/srv/reset_to_home.hpp>
 
 class TeleopIphone : public rclcpp::Node {
    public:
@@ -26,8 +25,9 @@ class TeleopIphone : public rclcpp::Node {
         this->declare_parameter<std::string>("arm_base_frame", "base_link");
         this->declare_parameter<std::string>("arm_ee_frame", "link6");
         // Control parameters
-        this->declare_parameter<std::string>("command_topic", "/arx5_ros2_node/cartesian_command");
-        this->declare_parameter<std::string>("reset_service_name", "/arx5_ros2_node/reset_to_home");
+        this->declare_parameter<std::string>("eef_cmd_topic", "/arx5_controller/eef_cmd");
+        this->declare_parameter<std::string>("gripper_cmd_topic", "/arx5_controller/gripper_cmd");
+        this->declare_parameter<std::string>("reset_service_name", "/arx5_controller/reset_to_home");
         this->declare_parameter<double>("touch_threshold", 0.3);
         this->declare_parameter<double>("touch_timeout", 0.05);
         this->declare_parameter<double>("position_scale", 1.0);
@@ -50,7 +50,8 @@ class TeleopIphone : public rclcpp::Node {
         gripper_close_       = this->get_parameter("gripper_close").as_double();
         double tf_rate       = this->get_parameter("tf_update_rate").as_double();
         int    control_rate  = this->get_parameter("control_rate").as_int();
-        command_topic_       = this->get_parameter("command_topic").as_string();
+        eef_cmd_topic_       = this->get_parameter("eef_cmd_topic").as_string();
+        gripper_cmd_topic_   = this->get_parameter("gripper_cmd_topic").as_string();
         reset_service_name_  = this->get_parameter("reset_service_name").as_string();
 
         // TF2 setup
@@ -58,14 +59,15 @@ class TeleopIphone : public rclcpp::Node {
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
         // Publishers
-        cmd_pub_ = this->create_publisher<arx_ros2::msg::CartesianCommand>(command_topic_, 10);
+        eef_cmd_pub_     = this->create_publisher<geometry_msgs::msg::PoseStamped>(eef_cmd_topic_, 10);
+        gripper_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64>(gripper_cmd_topic_, 10);
 
         // Subscribers
         touch_sub_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
             "/iphone/touch", 10, std::bind(&TeleopIphone::touch_callback, this, std::placeholders::_1));
 
         // Services
-        reset_client_ = this->create_client<arx_ros2::srv::ResetToHome>(reset_service_name_);
+        reset_client_ = this->create_client<std_srvs::srv::Trigger>(reset_service_name_);
 
         // Timer for TF updates
         auto tf_period = std::chrono::duration<double>(1.0 / tf_rate);
@@ -277,28 +279,27 @@ class TeleopIphone : public rclcpp::Node {
         tf2::Quaternion q_target;
         q_target.setRPY(target_roll, target_pitch, target_yaw);
 
-        // Create and publish CartesianCommand
-        auto cmd_msg                      = arx_ros2::msg::CartesianCommand();
-        cmd_msg.header.stamp              = this->now();
-        cmd_msg.header.frame_id           = arm_base_frame_;
-        cmd_msg.target_pose.position.x    = target_x;
-        cmd_msg.target_pose.position.y    = target_y;
-        cmd_msg.target_pose.position.z    = target_z;
-        cmd_msg.target_pose.orientation.x = q_target.x();
-        cmd_msg.target_pose.orientation.y = q_target.y();
-        cmd_msg.target_pose.orientation.z = q_target.z();
-        cmd_msg.target_pose.orientation.w = q_target.w();
+        // Create and publish eef_cmd (geometry_msgs/PoseStamped, per arx5_ros2 interface)
+        auto eef_msg                = geometry_msgs::msg::PoseStamped();
+        eef_msg.header.stamp        = this->now();
+        eef_msg.header.frame_id     = arm_base_frame_;
+        eef_msg.pose.position.x     = target_x;
+        eef_msg.pose.position.y     = target_y;
+        eef_msg.pose.position.z     = target_z;
+        eef_msg.pose.orientation.x  = q_target.x();
+        eef_msg.pose.orientation.y  = q_target.y();
+        eef_msg.pose.orientation.z  = q_target.z();
+        eef_msg.pose.orientation.w  = q_target.w();
+        eef_cmd_pub_->publish(eef_msg);
 
-        // Gripper control: 2 touches = close, otherwise open
-        cmd_msg.gripper_position = (touch_count >= 2) ? gripper_open_ : gripper_close_;
-
-        cmd_msg.timestamp = 0.0;
-
-        cmd_pub_->publish(cmd_msg);
+        // Gripper control: 2 touches = close, otherwise open (value in meters, per arx5_ros2 gripper_cmd)
+        auto gripper_msg = std_msgs::msg::Float64();
+        gripper_msg.data = (touch_count >= 2) ? gripper_close_ : gripper_open_;
+        gripper_cmd_pub_->publish(gripper_msg);
 
         RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500,
                              "Cmd: pos[%.3f, %.3f, %.3f] delta[%.3f, %.3f, %.3f] gripper=%.3f touches=%zu", target_x,
-                             target_y, target_z, delta_x, delta_y, delta_z, cmd_msg.gripper_position, touch_count);
+                             target_y, target_z, delta_x, delta_y, delta_z, gripper_msg.data, touch_count);
     }
 
     void send_reset_to_home() {
@@ -307,9 +308,9 @@ class TeleopIphone : public rclcpp::Node {
             return;
         }
 
-        auto request = std::make_shared<arx_ros2::srv::ResetToHome::Request>();
+        auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
         (void)reset_client_->async_send_request(
-            request, [this](rclcpp::Client<arx_ros2::srv::ResetToHome>::SharedFuture future) {
+            request, [this](rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture future) {
                 const auto& response = future.get();
                 if (response->success) {
                     RCLCPP_INFO(this->get_logger(), "Reset to home succeeded");
@@ -348,7 +349,8 @@ class TeleopIphone : public rclcpp::Node {
     std::string iphone_target_frame_;
     std::string arm_base_frame_;
     std::string arm_ee_frame_;
-    std::string command_topic_;
+    std::string eef_cmd_topic_;
+    std::string gripper_cmd_topic_;
     std::string reset_service_name_;
     double      touch_threshold_;
     double      touch_timeout_;
@@ -408,9 +410,10 @@ class TeleopIphone : public rclcpp::Node {
     double start_ee_yaw_   = 0.0;
 
     // Publishers and subscribers
-    rclcpp::Publisher<arx_ros2::msg::CartesianCommand>::SharedPtr  cmd_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr  eef_cmd_pub_;
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr           gripper_cmd_pub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr touch_sub_;
-    rclcpp::Client<arx_ros2::srv::ResetToHome>::SharedPtr          reset_client_;
+    rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr              reset_client_;
 
     bool         reset_sent_         = false;
     bool         reset_block_active_ = false;

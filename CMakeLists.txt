@@ -14,7 +14,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2 REQUIRED)
-find_package(arx_ros2 REQUIRED)
+find_package(std_srvs REQUIRED)
 
 # Include directories
 include_directories(
@@ -46,10 +46,11 @@ add_executable(teleop_iphone
 
 ament_target_dependencies(teleop_iphone
   rclcpp
+  std_msgs
   geometry_msgs
   tf2_ros
   tf2
-  arx_ros2
+  std_srvs
 )
 
 # Install targets

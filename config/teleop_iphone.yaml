@@ -7,7 +7,9 @@ teleop_iphone:
     arm_base_frame: "base_link"
     arm_ee_frame: "eef_link"
 
-    command_topic: "/arx5_ros2_node/cartesian_command"
+    eef_cmd_topic: "/arx5_controller/eef_cmd"
+    gripper_cmd_topic: "/arx5_controller/gripper_cmd"
+    reset_service_name: "/arx5_controller/reset_to_home"
 
     # Touch radius threshold to detect pressing
     touch_threshold: 0.3
@@ -17,7 +19,7 @@ teleop_iphone:
     position_scale: 1.0
     rotation_scale: 0.5
 
-    # Gripper positions
+    # Gripper opening width in meters (clamped to [0, gripper_width] by arx5_ros2)
     gripper_open: 0.08
     gripper_close: 0.0
 
